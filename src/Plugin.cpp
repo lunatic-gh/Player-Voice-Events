@@ -1,3 +1,5 @@
+// ReSharper disable once CppUnusedIncludeDirective
+#include "Exports.h"
 #include "Logger.h"
 #include "Main.h"
 #include "PapyrusFunctions.h"

@@ -21,9 +21,9 @@ Function SetVoiceType()
     Int sex = Self.GetActorRef().GetActorBase().GetSex()
     If sex == 0
         Self.GetActorRef().GetRace().SetDefaultVoiceType(false, PVEVoiceTypeMale)
-        LNTC_PVESKSEFunctions.Log("Changed Voice Type to PVEVoiceTypeMale")
+        LNTC_PVESKSEFunctions.Log("Debug", "Changed Voice Type to PVEVoiceTypeMale")
     ElseIf sex == 1
         Self.GetActorRef().GetRace().SetDefaultVoiceType(true, PVEVoiceTypeFemale)
-        LNTC_PVESKSEFunctions.Log("Changed Voice Type to PVEVoiceTypeFemale")
+        LNTC_PVESKSEFunctions.Log("Debug", "Changed Voice Type to PVEVoiceTypeFemale")
     EndIf
 EndFunction

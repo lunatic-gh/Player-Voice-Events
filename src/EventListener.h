@@ -8,7 +8,10 @@ namespace PVE {
                                    public RE::BSTEventSink<RE::TESSleepStartEvent>,
                                    public RE::BSTEventSink<RE::TESSleepStopEvent>,
                                    public RE::BSTEventSink<RE::TESContainerChangedEvent>,
-                                   public RE::BSTEventSink<RE::TESQuestStageEvent> {
+                                   public RE::BSTEventSink<RE::TESQuestStageEvent>,
+                                   public RE::BSTEventSink<RE::TESFurnitureEvent>,
+                                   public RE::BSTEventSink<RE::TESSpellCastEvent>,
+                                   public RE::BSTEventSink<RE::LocationDiscovery::Event> {
     public:
         RE::BSEventNotifyControl ProcessEvent(const RE::TESPlayerBowShotEvent *event, RE::BSTEventSource<RE::TESPlayerBowShotEvent> *) override;
 
@@ -24,6 +27,12 @@ namespace PVE {
 
         RE::BSEventNotifyControl ProcessEvent(const RE::TESQuestStageEvent *event, RE::BSTEventSource<RE::TESQuestStageEvent> *) override;
 
+        RE::BSEventNotifyControl ProcessEvent(const RE::TESFurnitureEvent *event, RE::BSTEventSource<RE::TESFurnitureEvent> *) override;
+
+        RE::BSEventNotifyControl ProcessEvent(const RE::TESSpellCastEvent *event, RE::BSTEventSource<RE::TESSpellCastEvent> *) override;
+
+        RE::BSEventNotifyControl ProcessEvent(const RE::LocationDiscovery::Event *event, RE::BSTEventSource<RE::LocationDiscovery::Event> *) override;
+
         static void Register() {
             static DefaultEventSink sink;
             RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESPlayerBowShotEvent>(&sink);
@@ -32,14 +41,15 @@ namespace PVE {
             RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESSleepStopEvent>(&sink);
             RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESContainerChangedEvent>(&sink);
             RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESQuestStageEvent>(&sink);
+            RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESFurnitureEvent>(&sink);
+            RE::ScriptEventSourceHolder::GetSingleton()->AddEventSink<RE::TESSpellCastEvent>(&sink);
+            RE::LocationDiscovery::GetEventSource()->AddEventSink<RE::LocationDiscovery::Event>(&sink);
             SKSE::GetActionEventSource()->AddEventSink(&sink);
         }
     };
 
     // Those need to be registered every time a save is loaded.
-    class DynamicEventSink final : public RE::BSTEventSink<RE::BSAnimationGraphEvent>,
-                                   public RE::BSTEventSink<SKSE::CameraEvent>,
-                                   public RE::BSTEventSink<RE::BGSActorCellEvent> {
+    class DynamicEventSink final : public RE::BSTEventSink<RE::BSAnimationGraphEvent>, public RE::BSTEventSink<SKSE::CameraEvent>, public RE::BSTEventSink<RE::BGSActorCellEvent> {
     public:
         RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent *event, RE::BSTEventSource<RE::BSAnimationGraphEvent> *) override;
 

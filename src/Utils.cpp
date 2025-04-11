@@ -2,136 +2,139 @@
 
 #include <nlohmann/json.hpp>
 
+#include "ConditionManager.h"
+#include "ConfigParser.h"
 #include "Logger.h"
 #include "SoundEvent.h"
 
 namespace PVE {
+    // TODO: Add more specific error logging
     void Utils::LoadData() {
-        // Load Quest Data
-        const std::string questDataDirPath = "Data/Sound/PlayerVoiceEvents/QuestData";
-        for (const auto &entry : std::filesystem::directory_iterator(questDataDirPath)) {
-            if (entry.is_regular_file()) {
-                std::string ext = entry.path().extension().string();
-                if (ext == ".json") {
-                    std::ifstream questDataFile(entry.path());
-                    if (!questDataFile.is_open()) {
-                        Log(std::format("Warning: Could not open File '{}'", entry.path().string()));
-                        continue;
+        // Load Location Data
+        if (auto dataHandler = RE::TESDataHandler::GetSingleton()) {
+            for (auto form : dataHandler->GetFormArray(RE::FormType::WorldSpace)) {
+                if (auto worldspace = form->As<RE::TESWorldSpace>()) {
+                    const char *wsName = worldspace->GetName();
+                    if (wsName && *wsName != '\0') {
+                        std::vector<std::pair<RE::TESObjectREFR *, float>> markerList;
+                        if (auto cell = worldspace->persistentCell) {
+                            // ForEachReferences crashes on AE it seems, so we do it manually
+                            for (auto &ref : cell->GetRuntimeData().references) {
+                                if (auto marker = ref->extraList.GetByType<RE::ExtraMapMarker>()) {
+                                    if (marker->mapData) {
+                                        float radius = 1000.0f;
+                                        if (auto markerRadius = ref->extraList.GetByType<RE::ExtraRadius>()) {
+                                            radius = markerRadius->radius;
+                                        }
+                                        markerList.push_back(std::make_pair(ref.get(), radius));
+                                    }
+                                }
+                            }
+                        }
+                        if (!markerList.empty()) {
+                            markerMap[wsName] = std::move(markerList);
+                        }
                     }
-
-                    nlohmann::json json;
-                    try {
-                        questDataFile >> json;
-                    } catch (const nlohmann::json::parse_error &) {
-                        Log(std::format("Warning: Could not open File '{}' - Please make sure it is in proper json-format.", entry.path().string()));
-                        continue;
-                    }
-
-                    if (!(json.contains("enabled") && json.at("enabled").is_boolean() ? json.at("enabled").get<bool>() : true)) {
-                        continue;
-                    }
-
-                    if (json.contains("name") && json.at("name").is_string() && json.contains("questRef") && json.at("questRef").is_string()) {
-                        auto name = json.at("name").get<std::string>();
-                        auto split = SplitByChar(json.at("questRef").get<std::string>(), '|');
-                        auto questRef = std::make_pair(split[0], std::stoi(split[1], nullptr, 16));
-                        quests.emplace_back(name, questRef);
-                        Log(std::format("Loaded Quest-Data for '{}'", name));
-                    } else {
-                        Log(std::format("Warning: Ignoring Data File '{}', because it has missing or corrupted data. Please check it for errors.",
-                                        entry.path().string()));
-                    }
-                    questDataFile.close();
                 }
             }
         }
-
-        // Load Sound Data
-        const std::string packConfigPath = "Data/Sound/PlayerVoiceEvents/SoundData/config.json";
-        std::ifstream packConfigFile(packConfigPath);
-        if (!packConfigFile.is_open()) {
-            Log(std::format("Warning: Could not open Voice-Pack Configuration at '{}'", packConfigPath));
-            return;
-        }
-        nlohmann::json json;
-        try {
-            packConfigFile >> json;
-        } catch (const nlohmann::json::parse_error &) {
-            Log("Error: Could not parse Voice-Pack Configuration - Please make sure it is in proper json-format.");
-            return;
-        }
-        for (const auto &[key, value] : json["sounds"].items()) {
-            std::vector<std::pair<std::string, std::vector<std::string>>> audios;
-            if (value.contains("audio") && value.at("audio").is_array()) {
-                for (auto audio : value.at("audio").get<std::vector<nlohmann::basic_json<>>>()) {
-                    std::string condition;
-                    std::vector<std::string> files;
-                    if (!audio.contains("files") || !audio["files"].is_array() || audio["files"].empty()) {
-                        continue;
-                    }
-                    files = audio.at("files").get<std::vector<std::string>>();
-                    if (audio.contains("condition") && audio.at("condition").is_string() && !audio.at("condition").get<std::string>().empty()) {
-                        condition = audio.at("condition").get<std::string>();
-                    }
-                    audios.emplace_back(condition, files);
-                }
-            }
-            if (audios.empty()) {
+        const std::string markerDataOverridePath = "Data/Sound/PlayerVoiceEvents/MarkerOverrides";
+        for (const auto &entry : std::filesystem::directory_iterator(markerDataOverridePath)) {
+            if (!entry.is_regular_file()) continue;
+            if (entry.path().extension() != ".json") continue;
+            std::ifstream markerDataFile(entry.path());
+            if (!markerDataFile.is_open()) {
+                Log("Error", std::format("Warning: Could not open File '{}'", entry.path().string()));
                 continue;
             }
-            SoundEvent soundEvent(
-                value.contains("chance") && value.at("chance").is_number_integer() ? value.at("chance").get<int>() : 100,
-                value.contains("cooldown") && value.at("cooldown").is_number_float() ? value.at("cooldown").get<float>() : 0.0f,
-                value.contains("canBeOverridden") && value.at("canBeOverridden").is_boolean() ? value.at("canBeOverridden").get<bool>() : false,
-                value.contains("forceOverrideOthers") && value.at("forceOverrideOthers").is_boolean() ? value.at("forceOverrideOthers").get<bool>() : false,
-                value.contains("delay") && value.at("delay").is_number_float() ? value.at("delay").get<float>() : 0.0f,
-                value.contains("volume") && value.at("volume").is_number_float() ? value.at("volume").get<float>() : 1.0f,
-                audios,
-                value.contains("lipped") && value.at("lipped").is_boolean() ? value.at("lipped").get<bool>() : true);
-            registeredSoundEvents[key] = soundEvent;
-            eventCooldowns[key] = false;
-            Log(std::format("Loaded Sound-Data for '{}'", key));
+            nlohmann::json json;
+            try {
+                markerDataFile >> json;
+            } catch (const nlohmann::json::parse_error &) {
+                Log("Error", std::format("Warning: Could not open File '{}' - Please make sure it is in proper json-format.", entry.path().string()));
+                continue;
+            }
+            if (!json.contains("worldspace") || !json["worldspace"].is_string() || !json.contains("markerID") || !json["markerID"].is_string()) {
+                Log("Error", std::format("Warning: Ignoring Data File '{}', because it has missing or corrupt data. Please check it for errors.", entry.path().string()));
+                continue;
+            }
+
+            auto worldspaceName = json["worldspace"].get<std::string>();
+            auto markerIDStr = SplitByChar(json["markerID"].get<std::string>(), '|');
+            std::string markerPlugin = "";
+            int markerID = -1;
+            try {
+                markerPlugin = markerIDStr[0];
+                markerID = std::stoi(markerIDStr[1], nullptr, 16);
+            } catch (std::invalid_argument) {
+                Log("Error", std::format("Warning: Ignoring Data File '{}', because it has missing or corrupt data. Please check it for errors.", entry.path().string()));
+            } catch (std::out_of_range) {
+                Log("Error", std::format("Warning: Ignoring Data File '{}', because it has missing or corrupt data. Please check it for errors.", entry.path().string()));
+            }
+
+            if (!markerMap.contains(worldspaceName)) continue;
+            bool enabled = json.value("enabled", true);
+            auto &markerList = markerMap[worldspaceName];
+            if (!enabled) {
+                std::erase_if(markerList, [markerPlugin, markerID](const std::pair<RE::TESObjectREFR *, float> &pair) {
+                    return pair.first && pair.first->GetFile()->fileName == markerPlugin && static_cast<int>(pair.first->GetFormID()) == markerID;
+                });
+            } else if (json.contains("radius") && json["radius"].is_number_float()) {
+                for (auto &pair : markerList) {
+                    if (pair.first && pair.first->GetFile()->fileName == markerPlugin && static_cast<int>(pair.first->GetFormID()) == markerID) {
+                        float oldRadius = pair.second;
+                        float newRadius = json["radius"].get<float>();
+                        pair.second = newRadius;
+                    }
+                }
+            }
         }
-        Log("Done Loading...");
-        packConfigFile.close();
+        Log("Info", "Loaded MapMarker-Data");
+
+        ConfigParser configParser;
+        configParser.LoadSoundData();
     }
 
-    void Utils::PlaySound(const std::string &soundEventName, const std::string &subSoundEventName) {
-        auto player = RE::PlayerCharacter::GetSingleton();
-        // If not loaded into the world (e.g. in loading screens)
-        if (!player->Is3DLoaded()) {
+    void Utils::PlaySound(const std::string &eventName) {
+        if (!CanPlaySound()) {
+            ConditionManager::ResetDynamicConditions(eventName);
             return;
         }
-        // If Vampire-Lord or Werewolf
-        if (player->GetRace()->GetFormID() == 0xCDD84 || player->GetRace()->GetFormID() == 0x283A) {
-            return;
-        }
-        const auto eventIt = registeredSoundEvents.find(soundEventName);
-        const auto subEventIt = registeredSoundEvents.find(subSoundEventName);
-        std::string s = strcmp(subSoundEventName.c_str(), "") == 0 ? soundEventName : subSoundEventName;
-        Log(std::format("Received Event '{}'", s));
+        const auto eventIt = registeredSoundEvents.find(eventName);
+        Log("Debug", std::format("Received Event '{}'", eventName));
         SoundEvent event;
-        if (subEventIt != registeredSoundEvents.end()) {
-            event = subEventIt->second;
-        } else if (eventIt != registeredSoundEvents.end()) {
+        if (eventIt != registeredSoundEvents.end()) {
             event = eventIt->second;
         } else {
+            ConditionManager::ResetDynamicConditions(eventName);
             return;
         }
-        std::thread([event, soundEventName, player]() mutable {
+        std::thread([event, eventName]() mutable {
             float delaySeconds = event.GetDelay();
             while (delaySeconds > 0.0f) {
-                if (!RE::UI::GetSingleton()->GameIsPaused() && player->Is3DLoaded()) {
+                if (RE::UI::GetSingleton() && !RE::UI::GetSingleton()->GameIsPaused() && RE::PlayerCharacter::GetSingleton() && RE::PlayerCharacter::GetSingleton()->Is3DLoaded()) {
                     delaySeconds -= 0.05f;
                     std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 }
             }
-            event.Play(soundEventName);
+            event.Play(eventName);
         }).detach();
     }
 
-    void Utils::Log(const std::string &msg) {
-        logger::info("{}", msg);
+    bool Utils::CanPlaySound() {
+        const auto player = RE::PlayerCharacter::GetSingleton();
+        const auto ui = RE::UI::GetSingleton();
+        if (!player || !ui) {
+            return false;
+        }
+        if (!player->Is3DLoaded() || ui->IsMenuOpen("Loading Menu")) {
+            return false;
+        }
+        return true;
+    }
+
+    void Utils::Log(const std::string &prefix, const std::string &msg) {
+        logger::info("[{}] {}", prefix, msg);
     }
 
     std::string Utils::Replace(const std::string &text, const std::string &oldSeq, const std::string &newSeq) {
@@ -148,10 +151,16 @@ namespace PVE {
     }
 
     int Utils::GenerateRandomInt(const int minInclusive, const int maxInclusive) {
-        std::random_device randomDev;
-        std::mt19937 randomGen(randomDev());
-        std::uniform_int_distribution<> randomRange(minInclusive, maxInclusive);
-        return randomRange(randomGen);
+        std::random_device dev;
+        std::mt19937 gen(dev());
+        std::uniform_int_distribution range(minInclusive, maxInclusive);
+        return range(gen);
+    }
+    float Utils::GenerateRandomFloat(float minInclusive, float maxInclusive) {
+        std::random_device dev;
+        std::mt19937 gen(dev());
+        std::uniform_real_distribution range(minInclusive, maxInclusive);
+        return range(gen);
     }
 
     void Utils::RunConsoleCommand(const std::string &command) {
@@ -164,43 +173,39 @@ namespace PVE {
     }
 
     bool Utils::FormHasKeywordString(RE::TESForm *form, const std::string &keyword) {
-        if (!form) return false;
-        const auto keywordForm = form->As<RE::BGSKeywordForm>();
-        if (!keywordForm) return false;
-        return keywordForm->HasKeywordString(keyword);
+        if (form) {
+            if (const auto keywordForm = form->As<RE::BGSKeywordForm>()) {
+                return keywordForm->HasKeywordString(keyword);
+            }
+        }
+        return false;
     }
+    std::string Utils::GetFormKeywordsFormatted(RE::TESForm *form) {
+        std::string s = "";
+        if (form) {
+            if (const auto keywordForm = form->As<RE::BGSKeywordForm>()) {
+                auto keywords = keywordForm->GetKeywords();
+                for (int i = 0; i < keywords.size(); ++i) {
+                    s += keywords[i]->GetFormEditorID();
+                    if (i != keywords.size() - 1) {
+                        s += "|";
+                    }
+                }
+            }
+        }
+        return s;
+    }
+
     float Utils::CalculateDistance(const float x1, const float y1, const float x2, const float y2) {
         return std::sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
-    }
-
-    int Utils::QueryLocationChange(const std::pair<std::string, std::tuple<std::string, float, float, float>> &locData) {
-        const auto player = RE::PlayerCharacter::GetSingleton();
-
-        const float x = player->GetPositionX();
-        const float y = player->GetPositionY();
-
-        auto locName = locData.first;
-        if (auto [locWorldSpace, locX, locY, locRadius] = locData.second; player->GetWorldspace() && player->GetWorldspace()->GetFullName() == locWorldSpace) {
-            const float dist = CalculateDistance(x, y, locX, locY);
-            if ((!currentLocation.has_value() || currentLocation.value() != locName) && dist < locRadius) {
-                Log(std::format("Enter '{}'", locName));
-                currentLocation.emplace(locName);
-                return 2;
-            }
-            // if (currentLocation.has_value() && locName == currentLocation.value() && dist > (locRadius * 1.15)) {
-            //     Log(std::format("Leave '{}'", currentLocation.value()));
-            //     currentLocation.emplace("");
-            //     return 1;
-            // }
-        }
-        return 0;
     }
 
     std::vector<std::string> Utils::SplitByChar(const std::string &input, const char &delimiter) {
         std::vector<std::string> result;
         std::stringstream ss(input);
         std::string s;
-        while (std::getline(ss, s, delimiter)) result.push_back(s);
+        while (std::getline(ss, s, delimiter))
+            result.push_back(s);
         return result;
     }
     std::string Utils::TrimString(const std::string &s) {

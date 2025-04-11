@@ -10,8 +10,7 @@
 #include "Utils.h"
 
 namespace PVE {
-
-    class ConditionParser {
+    class ConditionManager {
         using Value = std::variant<float, int, bool, std::string>;
 
     public:
@@ -36,21 +35,24 @@ namespace PVE {
             });
             RegisterCondition("PlayerEquippedWeaponTypeLeft", [] {
                 const auto actor = RE::PlayerCharacter::GetSingleton();
-                if (actor->GetEquippedObject(true)->Is(RE::FormType::Weapon)) {
-                    return static_cast<int>(actor->GetEquippedObject(true)->As<RE::TESObjectWEAP>()->GetWeaponType());
+                if (const auto form = actor->GetEquippedObject(true)) {
+                    if (const auto weapon = form->As<RE::TESObjectWEAP>()) {
+                        return static_cast<int>(weapon->GetWeaponType());
+                    }
                 }
                 return -1;
             });
             RegisterCondition("PlayerEquippedWeaponTypeRight", [] {
                 const auto actor = RE::PlayerCharacter::GetSingleton();
-                if (actor->GetEquippedObject(false)->Is(RE::FormType::Weapon)) {
-                    return static_cast<int>(actor->GetEquippedObject(false)->As<RE::TESObjectWEAP>()->GetWeaponType());
+                if (const auto form = actor->GetEquippedObject(false)) {
+                    if (const auto weapon = form->As<RE::TESObjectWEAP>()) {
+                        return static_cast<int>(weapon->GetWeaponType());
+                    }
                 }
                 return -1;
             });
-            RegisterCondition("PlayerRace", [] {
-                const auto actor = RE::PlayerCharacter::GetSingleton();
-                if (actor->GetRace()) {
+            RegisterCondition("PlayerRaceName", [] {
+                if (const auto actor = RE::PlayerCharacter::GetSingleton(); actor->GetRace()) {
                     return actor->GetRace()->GetName();
                 }
                 return "";
@@ -87,25 +89,29 @@ namespace PVE {
             });
             RegisterCondition("PlayerLocationKeywords", [] {
                 auto actor = RE::PlayerCharacter::GetSingleton();
-                if (actor->GetCurrentLocation()) {
-                    std::string s;
-                    auto keywords = actor->GetCurrentLocation()->GetKeywords();
-                    for (int i = 0; i < keywords.size(); ++i) {
-                        s += keywords[i]->GetFormEditorID();
-                        if (i != keywords.size() - 1) {
-                            s += "|";
+                return Utils::GetFormKeywordsFormatted(actor->GetCurrentLocation());
+            });
+            RegisterCondition("RandomInt", [] {
+                return Utils::GenerateRandomInt(1, 100);
+            });
+            RegisterCondition("RandomFloat", [] {
+                return Utils::GenerateRandomFloat(0.0f, 100.0f);
+            });
+            RegisterCondition("RandomBool", [] {
+                return Utils::GenerateRandomInt(1, 100) <= 50;
+            });
+            RegisterCondition("PlayerWerewolfState", [] {
+                if (const auto globalVar = RE::TESForm::LookupByID(0xed06c)->As<RE::TESGlobal>()) {
+                    if (const auto player = RE::PlayerCharacter::GetSingleton()) {
+                        if (globalVar->value == 1.0f) {
+                            if (player->GetRace()->GetFormID() == 0xCDD84) {
+                                return 2;
+                            }
+                            return 1;
                         }
                     }
-                    return s;
                 }
-                return std::string("");
-            });
-            RegisterCondition("PlayerCellName", [] {
-                const auto actor = RE::PlayerCharacter::GetSingleton();
-                if (actor->GetParentCell()) {
-                    return actor->GetParentCell()->GetFormEditorID();
-                }
-                return "";
+                return 0;
             });
         }
 
@@ -114,12 +120,10 @@ namespace PVE {
         }
 
         static void RegisterDynamicCondition(const std::string &eventName, const std::string &conditionName, const std::function<Value()> &conditionFunction) {
-            Utils::Log("Register");
             dynamicConditions[eventName][conditionName] = conditionFunction;
         }
 
         static void ResetDynamicConditions(const std::string &eventName) {
-            Utils::Log("Reset");
             dynamicConditions.erase(eventName);
         }
 
@@ -131,14 +135,13 @@ namespace PVE {
             Parser parser(tokens);
             std::unique_ptr<Expr> expr = parser.parseExpression();
             if (!expr) {
-                std::cerr << "Parse error in condition.\n";
                 return false;
             }
             return expr->eval(eventName);
         }
 
     private:
-        enum class TokenType { Identifier, Number, String, Operator, LeftParen, RightParen, End };
+        enum class TokenType { Identifier, Float, Int, String, Bool, Operator, LeftParen, RightParen, End };
 
         struct Token {
             TokenType type;
@@ -149,18 +152,23 @@ namespace PVE {
             std::vector<Token> tokens;
             size_t i = 0;
             while (i < str.size()) {
+                // Ignore spaces
                 if (std::isspace(str[i])) {
                     ++i;
                     continue;
                 }
-                if (std::isalpha(str[i]) || str[i] == '_') {
-                    size_t j = i;
-                    while (j < str.size() && (std::isalnum(str[j]) || str[j] == '_')) j++;
-                    tokens.push_back({TokenType::Identifier, str.substr(i, j - i)});
+                // Base16 Numbers
+                if (i + 1 < str.size() && str[i] == '0' && (str[i + 1] == 'x' || str[i + 1] == 'X')) {
+                    size_t j = i + 2;
+                    while (j < str.size() && std::isxdigit(str[j])) {
+                        j++;
+                    }
+                    tokens.push_back({TokenType::Int, str.substr(i, j - i)});
                     i = j;
                     continue;
                 }
-                if (std::isdigit(str[i]) || ((str[i] == '.') && (i + 1 < str.size()) && std::isdigit(str[i + 1]))) {
+                // Base10 Numbers
+                if (std::isdigit(str[i]) || (str[i] == '.' && i + 1 < str.size() && std::isdigit(str[i + 1]))) {
                     size_t j = i;
                     bool dotEncountered = false;
                     while (j < str.size() && (std::isdigit(str[j]) || str[j] == '.')) {
@@ -170,10 +178,26 @@ namespace PVE {
                         }
                         j++;
                     }
-                    tokens.push_back({TokenType::Number, str.substr(i, j - i)});
+                    tokens.push_back({dotEncountered ? TokenType::Float : TokenType::Int, str.substr(i, j - i)});
                     i = j;
                     continue;
                 }
+                // Booleans & Identifiers
+                if (std::isalpha(str[i]) || str[i] == '_') {
+                    size_t j = i;
+                    while (j < str.size() && (std::isalnum(str[j]) || str[j] == '_')) {
+                        j++;
+                    }
+                    std::string tokenStr = str.substr(i, j - i);
+                    if (tokenStr == "true" || tokenStr == "false") {
+                        tokens.push_back({TokenType::Bool, tokenStr});
+                    } else {
+                        tokens.push_back({TokenType::Identifier, tokenStr});
+                    }
+                    i = j;
+                    continue;
+                }
+                // Strings
                 if (str[i] == '\'' || str[i] == '"') {
                     char quote = str[i];
                     i++;
@@ -203,16 +227,19 @@ namespace PVE {
                     tokens.push_back({TokenType::String, literal});
                     continue;
                 }
+                // Opening bracket
                 if (str[i] == '(') {
                     tokens.push_back({TokenType::LeftParen, "("});
                     ++i;
                     continue;
                 }
+                // Closing Bracket
                 if (str[i] == ')') {
                     tokens.push_back({TokenType::RightParen, ")"});
                     ++i;
                     continue;
                 }
+                // Comparison Operators
                 if (i + 1 < str.size()) {
                     std::string two = str.substr(i, 2);
                     if (two == "&&" || two == "||" || two == "==" || two == "!=" || two == "<=" || two == ">=" || two == "*=") {
@@ -228,6 +255,7 @@ namespace PVE {
                 }
                 ++i;
             }
+            // Done
             tokens.push_back({TokenType::End, ""});
             return tokens;
         }
@@ -247,7 +275,8 @@ namespace PVE {
             std::unique_ptr<Expr> right;
             Op op;
 
-            LogicalExpr(std::unique_ptr<Expr> l, std::unique_ptr<Expr> r, Op o) : left(std::move(l)), right(std::move(r)), op(o) {}
+            LogicalExpr(std::unique_ptr<Expr> l, std::unique_ptr<Expr> r, Op o) : left(std::move(l)), right(std::move(r)), op(o) {
+            }
 
             bool eval(const std::string &eventName) const override {
                 if (op == Op::And)
@@ -263,29 +292,30 @@ namespace PVE {
             std::string op;
             Value literal;
 
-            CondExpr(const std::string &v, const std::string &o, const Value &lit) : var(v), op(o), literal(lit) {}
+            CondExpr(const std::string &v, const std::string &o, const Value &lit) : var(v), op(o), literal(lit) {
+            }
 
             bool eval(const std::string &eventName) const override {
-                std::map<std::string, std::function<Value()>> map = conditions;
+                std::unordered_map<std::string, std::function<Value()> > map = conditions;
                 if (dynamicConditions.contains(eventName)) {
-                    // Overlay dynamic conditions on top of global ones
                     for (auto [k, v] : dynamicConditions[eventName]) {
                         map[k] = v;
                     }
                 }
 
-                auto it = map.find(var);
+                const auto it = map.find(var);
                 if (it == map.end()) {
                     return false;
                 }
+
                 const auto &val = it->second();
 
-                if (val.index() != literal.index()) {
+                if ((val.index() != literal.index())) {
                     return false;
                 }
                 if (std::holds_alternative<float>(val)) {
-                    float lhs = std::get<float>(val);
-                    float rhs = std::get<float>(literal);
+                    const float lhs = std::get<float>(val);
+                    const float rhs = std::get<float>(literal);
                     if (op == "==") return lhs == rhs;
                     if (op == "!=") return lhs != rhs;
                     if (op == "<") return lhs < rhs;
@@ -293,8 +323,8 @@ namespace PVE {
                     if (op == ">") return lhs > rhs;
                     if (op == ">=") return lhs >= rhs;
                 } else if (std::holds_alternative<int>(val)) {
-                    int lhs = std::get<int>(val);
-                    int rhs = std::get<int>(literal);
+                    const int lhs = std::get<int>(val);
+                    const int rhs = std::get<int>(literal);
                     if (op == "==") return lhs == rhs;
                     if (op == "!=") return lhs != rhs;
                     if (op == "<") return lhs < rhs;
@@ -303,8 +333,8 @@ namespace PVE {
                     if (op == ">=") return lhs >= rhs;
                     return false;
                 } else if (std::holds_alternative<bool>(val)) {
-                    bool lhs = std::get<bool>(val);
-                    bool rhs = std::get<bool>(literal);
+                    const bool lhs = std::get<bool>(val);
+                    const bool rhs = std::get<bool>(literal);
                     if (op == "==") return lhs == rhs;
                     if (op == "!=") return lhs != rhs;
                     return false;
@@ -326,7 +356,8 @@ namespace PVE {
 
         class Parser {
         public:
-            Parser(const std::vector<Token> &tokens) : tokens(tokens), pos(0) {}
+            Parser(const std::vector<Token> &tokens) : tokens(tokens), pos(0) {
+            }
 
             std::unique_ptr<Expr> parseExpression() {
                 return parseOr();
@@ -382,19 +413,37 @@ namespace PVE {
             }
 
             std::unique_ptr<Expr> parseCondition() {
-                if (current().type != TokenType::Identifier) return nullptr;
+                if (current().type != TokenType::Identifier) {
+                    return nullptr;
+                }
                 std::string varName = current().value;
                 consume();
 
-                if (current().type != TokenType::Operator) return nullptr;
+                if (current().type != TokenType::Operator) {
+                    return nullptr;
+                }
                 std::string op = current().value;
                 consume();
 
-                if (current().type == TokenType::Number) {
+                if (current().type == TokenType::Float) {
                     float num = std::stof(current().value);
                     consume();
                     return std::make_unique<CondExpr>(varName, op, Value(num));
-                } else if (current().type == TokenType::String) {
+                }
+                if (current().type == TokenType::Int) {
+                    int num = std::stoi(current().value, nullptr, (current().value.starts_with("0x") || current().value.starts_with("0X")) ? 16 : 10);
+                    consume();
+                    return std::make_unique<CondExpr>(varName, op, Value(num));
+                }
+                if (current().type == TokenType::Bool) {
+                    auto s = current().value;
+                    std::ranges::transform(s, s.begin(), [](const unsigned char c) {
+                        return std::tolower(c);
+                    });
+                    consume();
+                    return std::make_unique<CondExpr>(varName, op, Value(s == "true"));
+                }
+                if (current().type == TokenType::String) {
                     std::string s = current().value;
                     consume();
                     return std::make_unique<CondExpr>(varName, op, Value(s));
@@ -402,7 +451,8 @@ namespace PVE {
                 return nullptr;
             }
         };
-        inline static std::map<std::string, std::function<Value()>> conditions;
-        inline static std::map<std::string, std::map<std::string, std::function<Value()>>> dynamicConditions;
+
+        inline static std::unordered_map<std::string, std::function<Value()> > conditions;
+        inline static std::unordered_map<std::string, std::map<std::string, std::function<Value()> > > dynamicConditions;
     };
 }

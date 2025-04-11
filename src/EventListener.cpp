@@ -1,11 +1,15 @@
 #include "EventListener.h"
 
-#include "ConditionParser.h"
+#include "ConditionManager.h"
 #include "Utils.h"
 
 namespace PVE {
     RE::BSEventNotifyControl DefaultEventSink::ProcessEvent(const RE::TESPlayerBowShotEvent *event, RE::BSTEventSource<RE::TESPlayerBowShotEvent> *) {
-        Utils::PlaySound("PVEAttackBow", event->shotPower < 1.0f ? "PVEAttackBowLow" : "");
+        float f = event->shotPower;
+        ConditionManager::RegisterDynamicCondition("PVEAttackBow", "IsFullDrawn", [f] {
+            return f == 1.0f;
+        });
+        Utils::PlaySound("PVEAttackBow");
         return RE::BSEventNotifyControl::kContinue;
     }
 
@@ -18,17 +22,24 @@ namespace PVE {
         }
         if (target && target->IsPlayerRef()) {
             if (!target->IsDead()) {
-                if (target->As<RE::Actor>()->IsBlocking()) {
-                    Utils::PlaySound("PVEBlockReceivedHit", event->flags.any(RE::TESHitEvent::Flag::kPowerAttack) ? "PVEBlockReceivedPowerHit" : "");
-                } else {
-                    if (cause && cause->As<RE::Actor>() && cause->As<RE::Actor>()->IsPlayerTeammate() && source && source->Is(RE::FormType::Spell) &&
-                        Utils::FormHasKeywordString(source, "MagicRestoreHealth")) {
-                        Utils::PlaySound("PVEReceivedFriendlyHeal");
-                    } else {
-                        if (!cause || (!cause->Is(RE::FormType::ActorCharacter) || cause->As<RE::Actor>()->IsInKillMove())) {
-                            Utils::PlaySound("PVEReceivedHit", event->flags.any(RE::TESHitEvent::Flag::kPowerAttack) ? "PVEReceivedPowerHit" : "");
-                        }
-                    }
+                ConditionManager::RegisterDynamicCondition("PVEReceivedHit", "IsAttackBlocked", [event] {
+                    return event->flags.any(RE::TESHitEvent::Flag::kHitBlocked);
+                });
+                ConditionManager::RegisterDynamicCondition("PVEReceivedHit", "IsBashAttack", [event] {
+                    return event->flags.any(RE::TESHitEvent::Flag::kBashAttack);
+                });
+                ConditionManager::RegisterDynamicCondition("PVEReceivedHit", "IsPowerAttack", [event] {
+                    return event->flags.any(RE::TESHitEvent::Flag::kPowerAttack);
+                });
+                ConditionManager::RegisterDynamicCondition("PVEReceivedHit", "IsSneakAttack", [event] {
+                    return event->flags.any(RE::TESHitEvent::Flag::kSneakAttack);
+                });
+                ConditionManager::RegisterDynamicCondition("PVEReceivedHit", "IsHealingAttack", [cause, source] {
+                    return cause && cause->As<RE::Actor>() && cause->As<RE::Actor>()->IsPlayerTeammate() && source && source->Is(RE::FormType::Spell) &&
+                           Utils::FormHasKeywordString(source, "MagicRestoreHealth");
+                });
+                if (!cause || !cause->As<RE::Actor>() || !cause->As<RE::Actor>()->IsInKillMove()) {
+                    Utils::PlaySound("PVEReceivedHit");
                 }
             }
         }
@@ -58,43 +69,118 @@ namespace PVE {
         if (const auto actor = event->actor) {
             if (actor->IsPlayerRef()) {
                 if (type == SKSE::ActionEvent::Type::kWeaponSwing) {
-                    bool b = false;
+                    bool isPowerAttack = false;
                     if (const auto currentProcess = actor->GetActorRuntimeData().currentProcess) {
-                        if (const auto high = currentProcess->high) {
-                            if (const auto attackData = high->attackData) {
-                                Utils::PlaySound(attackData->data.flags.any(RE::AttackData::AttackFlag::kPowerAttack) ? "PVEPowerAttackMelee" : "PVEAttackMelee");
-                                return RE::BSEventNotifyControl::kContinue;
-                            }
+                        if (currentProcess->high && currentProcess->high->attackData) {
+                            const auto flags = currentProcess->high->attackData->data.flags;
+                            isPowerAttack = flags.any(RE::AttackData::AttackFlag::kPowerAttack);
                         }
                     }
+                    ConditionManager::RegisterDynamicCondition("PVEAttackMelee", "IsPowerAttack", [isPowerAttack]() {
+                        return isPowerAttack;
+                    });
                     Utils::PlaySound("PVEAttackMelee");
-                } else if (source && type == SKSE::ActionEvent::Type::kSpellCast) {
-                    Utils::PlaySound("PVESpellCast", std::format("PVESpellCast{}", Utils::Replace(source->GetName(), " ", "")));
-                } else if (source && type == SKSE::ActionEvent::Type::kSpellFire) {
-                    Utils::PlaySound("PVESpellFire", std::format("PVESpellFire{}", Utils::Replace(source->GetName(), " ", "")));
                 } else if (type == SKSE::ActionEvent::Type::kBeginDraw) {
-                    if (source && Utils::FormHasKeywordString(source, "WeapTypeBow")) {
-                        Utils::PlaySound("PVEUnsheathe", "PVEUnsheatheBow");
-                    } else if (source && source->GetFormType() != RE::FormType::Spell) {
-                        Utils::PlaySound("PVEUnsheathe", "PVEUnsheatheMelee");
-                    } else {
-                        Utils::PlaySound("PVEUnsheathe");
+                    static bool isOnCooldown = false;
+                    if (source && source->GetFormType() != RE::FormType::Spell && !isOnCooldown) {
+                        isOnCooldown = true;
+                        ConditionManager::RegisterDynamicCondition("PVEUnsheatheWeapon", "WeaponFormID", [source] {
+                            if (const auto weap = source->As<RE::TESObjectWEAP>()) return static_cast<int>(weap->GetFormID());
+                            return -1;
+                        });
+                        ConditionManager::RegisterDynamicCondition("PVEUnsheatheWeapon", "WeaponType", [source] {
+                            if (const auto weap = source->As<RE::TESObjectWEAP>()) return static_cast<int>(weap->GetWeaponType());
+                            return -1;
+                        });
+                        ConditionManager::RegisterDynamicCondition("PVEUnsheatheWeapon", "WeaponKeywords", [source] {
+                            return Utils::GetFormKeywordsFormatted(source);
+                        });
+                        Utils::PlaySound("PVEUnsheatheWeapon");
+                        std::thread([]() {
+                            std::this_thread::sleep_for(std::chrono::seconds(1));
+                            isOnCooldown = false;
+                        }).detach();
                     }
                 } else if (type == SKSE::ActionEvent::Type::kEndDraw) {
-                    if (source && source->GetFormType() == RE::FormType::Spell) {
-                        Utils::PlaySound("PVEUnsheathe", "PVEUnsheatheSpell");
+                    static bool isOnCooldown = false;
+                    if (source && source->GetFormType() == RE::FormType::Spell && !isOnCooldown) {
+                        isOnCooldown = true;
+                        ConditionManager::RegisterDynamicCondition("PVEUnsheatheSpell", "SpellFormID", [source] {
+                            if (const auto spell = source->As<RE::SpellItem>()) return static_cast<int>(spell->GetFormID());
+                            return -1;
+                        });
+                        ConditionManager::RegisterDynamicCondition("PVEUnsheatheSpell", "SpellKeywords", [source] {
+                            std::string s = "";
+                            if (const auto spell = source->As<RE::SpellItem>()) {
+                                for (auto mgef : spell->effects) {
+                                    for (const auto keyword : mgef->baseEffect->GetKeywords()) {
+                                        if (keyword && !s.contains(keyword->GetFormEditorID())) {
+                                            s += keyword->GetFormEditorID();
+                                            s += "|";
+                                        }
+                                    }
+                                }
+                            }
+                            return s.empty() ? s : s.substr(0, s.size() - 1);
+                        });
+                        Utils::PlaySound("PVEUnsheatheSpell");
+                        std::thread([]() {
+                            std::this_thread::sleep_for(std::chrono::seconds(1));
+                            isOnCooldown = false;
+                        }).detach();
                     }
                 } else if (type == SKSE::ActionEvent::Type::kBeginSheathe) {
-                    if (source && Utils::FormHasKeywordString(source, "WeapTypeBow")) {
-                        Utils::PlaySound("PVESheathe", "PVESheatheBow");
-                    } else if (source && source->GetFormType() != RE::FormType::Spell) {
-                        Utils::PlaySound("PVESheathe", "PVESheatheMelee");
-                    } else {
-                        Utils::PlaySound("PVESheathe");
+                    if (source && source->GetFormType() != RE::FormType::Spell) {
+                        static bool isOnCooldown = false;
+                        if (!isOnCooldown) {
+                            isOnCooldown = true;
+                            ConditionManager::RegisterDynamicCondition("PVESheatheWeapon", "WeaponFormID", [source] {
+                                if (const auto weap = source->As<RE::TESObjectWEAP>()) return static_cast<int>(weap->GetFormID());
+                                return -1;
+                            });
+                            ConditionManager::RegisterDynamicCondition("PVESheatheWeapon", "WeaponType", [source] {
+                                if (const auto weap = source->As<RE::TESObjectWEAP>()) return static_cast<int>(weap->GetWeaponType());
+                                return -1;
+                            });
+                            ConditionManager::RegisterDynamicCondition("PVESheatheWeapon", "WeaponKeywords", [source] {
+                                return Utils::GetFormKeywordsFormatted(source);
+                            });
+                            Utils::PlaySound("PVESheatheWeapon");
+                            std::thread([]() {
+                                std::this_thread::sleep_for(std::chrono::seconds(1));
+                                isOnCooldown = false;
+                            }).detach();
+                        }
                     }
                 } else if (type == SKSE::ActionEvent::Type::kEndSheathe) {
                     if (source && source->GetFormType() == RE::FormType::Spell) {
-                        Utils::PlaySound("PVESheathe", "PVESheatheSpell");
+                        static bool isOnCooldown = false;
+                        if (!isOnCooldown) {
+                            isOnCooldown = true;
+                            ConditionManager::RegisterDynamicCondition("PVESheatheSpell", "SpellFormID", [source] {
+                                if (const auto spell = source->As<RE::SpellItem>()) return static_cast<int>(spell->GetFormID());
+                                return -1;
+                            });
+                            ConditionManager::RegisterDynamicCondition("PVESheatheSpell", "SpellKeywords", [source] {
+                                std::string s = "";
+                                if (const auto spell = source->As<RE::SpellItem>()) {
+                                    for (auto mgef : spell->effects) {
+                                        for (const auto keyword : mgef->baseEffect->GetKeywords()) {
+                                            if (keyword && !s.contains(keyword->GetFormEditorID())) {
+                                                s += keyword->GetFormEditorID();
+                                                s += "|";
+                                            }
+                                        }
+                                    }
+                                }
+                                return s.empty() ? s : s.substr(0, s.size() - 1);
+                            });
+                            Utils::PlaySound("PVESheatheSpell");
+                            std::thread([]() {
+                                std::this_thread::sleep_for(std::chrono::seconds(1));
+                                isOnCooldown = false;
+                            }).detach();
+                        }
                     }
                 }
             }
@@ -103,55 +189,132 @@ namespace PVE {
     }
 
     RE::BSEventNotifyControl DefaultEventSink::ProcessEvent(const RE::TESSleepStartEvent *, RE::BSTEventSource<RE::TESSleepStartEvent> *) {
-        Utils::PlaySound("PVESleepStart");
+        ConditionManager::RegisterDynamicCondition("PVESleep", "SleepState", [] {
+            return 0;
+        });
+        Utils::PlaySound("PVESleep");
         return RE::BSEventNotifyControl::kContinue;
     }
 
     RE::BSEventNotifyControl DefaultEventSink::ProcessEvent(const RE::TESSleepStopEvent *, RE::BSTEventSource<RE::TESSleepStopEvent> *) {
-        Utils::PlaySound("PVESleepEnd");
+        ConditionManager::RegisterDynamicCondition("PVESleep", "SleepState", [] {
+            return 1;
+        });
+        Utils::PlaySound("PVESleep");
         return RE::BSEventNotifyControl::kContinue;
     }
 
     RE::BSEventNotifyControl DefaultEventSink::ProcessEvent(const RE::TESContainerChangedEvent *event, RE::BSTEventSource<RE::TESContainerChangedEvent> *) {
-        if (event->newContainer == RE::PlayerCharacter::GetSingleton()->GetFormID()) {
-            switch (RE::TESForm::LookupByID(event->baseObj)->GetFormType()) {
-                case RE::FormType::Armor:
-                    Utils::PlaySound("PVEPickupItem", "PVEPickupItemArmor");
-                    break;
-                case RE::FormType::Book:
-                    Utils::PlaySound("PVEPickupItem", "PVEPickupItemBook");
-                    break;
-                case RE::FormType::Weapon:
-                    Utils::PlaySound("PVEPickupItem", "PVEPickupItemWeapon");
-                    break;
-                case RE::FormType::Ammo:
-                    Utils::PlaySound("PVEPickupItem", "PVEPickupItemAmmo");
-                    break;
-                case RE::FormType::AlchemyItem:
-                    Utils::PlaySound("PVEPickupItem", "PVEPickupItemPotion");
-                    break;
-                default:
-                    Utils::PlaySound("PVEPickupItem");
-                    break;
-            }
+        const auto oldContainer = event->oldContainer;
+        if (const auto newContainer = event->newContainer; newContainer == RE::PlayerCharacter::GetSingleton()->GetFormID()) {
+            const auto form = RE::TESForm::LookupByID(event->baseObj);
+            ConditionManager::RegisterDynamicCondition("PVEPickupItem", "ItemFormID", [form] {
+                if (form) {
+                    return static_cast<int>(form->GetFormID());
+                }
+                return -1;
+            });
+            ConditionManager::RegisterDynamicCondition("PVEPickupItem", "ItemFormType", [form] {
+                if (form) {
+                    return static_cast<int>(form->GetFormType());
+                }
+                return -1;
+            });
+            ConditionManager::RegisterDynamicCondition("PVEPickupItem", "ItemKeywords", [form] {
+                if (form) {
+                    return Utils::GetFormKeywordsFormatted(form);
+                }
+                return std::string("");
+            });
+            ConditionManager::RegisterDynamicCondition("PVEPickupItem", "SourceContainerFormID", [oldContainer] {
+                return static_cast<int>(oldContainer);
+            });
+            Utils::PlaySound("PVEPickupItem");
         }
         return RE::BSEventNotifyControl::kContinue;
     }
 
     RE::BSEventNotifyControl DefaultEventSink::ProcessEvent(const RE::TESQuestStageEvent *event, RE::BSTEventSource<RE::TESQuestStageEvent> *) {
-        if (event->formID != 0) {
-            const auto stage = event->stage;
-            for (auto questData : quests) {
-                auto [fst, snd] = std::get<1>(questData);
-                const auto refQuest = RE::TESDataHandler::GetSingleton()->LookupForm<RE::TESQuest>(snd, fst);
-                if (refQuest && refQuest->GetFormID() == event->formID) {
-                    if (std::ranges::find(questStageCooldowns, stage) == questStageCooldowns.end()) {
-                        questStageCooldowns.push_back(stage);
-                        Utils::PlaySound(std::format("PVEQuestStageCompleted{}_{}", std::get<0>(questData), stage));
-                        std::thread([stage] {
-                            std::this_thread::sleep_for(std::chrono::seconds(1));
-                            std::erase(questStageCooldowns, stage);
+        if (!event || event->formID == 0) {
+            return RE::BSEventNotifyControl::kContinue;
+        };
+        int questID = static_cast<int>(event->formID);
+        int questStage = event->stage;
+        if (!std::ranges::contains(questStageCooldownMap[questID], questStage)) {
+            questStageCooldownMap[questID].push_back(questStage);
+            ConditionManager::RegisterDynamicCondition("PVEQuestStageCompleted", "QuestID", [questID] {
+                return questID;
+            });
+            ConditionManager::RegisterDynamicCondition("PVEQuestStageCompleted", "QuestStage", [questStage] {
+                return questStage;
+            });
+            Utils::PlaySound("PVEQuestStageCompleted");
+            std::thread([questID, questStage] {
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+                std::erase(questStageCooldownMap[questID], questStage);
+            }).detach();
+        }
+        return RE::BSEventNotifyControl::kContinue;
+    }
+    RE::BSEventNotifyControl DefaultEventSink::ProcessEvent(const RE::TESFurnitureEvent *event, RE::BSTEventSource<RE::TESFurnitureEvent> *) {
+        if (event) {
+            if (event->actor->IsPlayerRef()) {
+                if (event->type == RE::TESFurnitureEvent::FurnitureEventType::kEnter) {
+                    Utils::PlaySound("PVESit");
+                } else if (event->type == RE::TESFurnitureEvent::FurnitureEventType::kExit) {
+                    Utils::PlaySound("PVEGetUp");
+                }
+            }
+        }
+        return RE::BSEventNotifyControl::kContinue;
+    }
+
+    RE::BSEventNotifyControl DefaultEventSink::ProcessEvent(const RE::TESSpellCastEvent *event, RE::BSTEventSource<RE::TESSpellCastEvent> *) {
+        static std::vector<RE::SpellItem *> casting = {};
+        static std::mutex castingMutex;
+        if (const auto obj = event->object.get()) {
+            if (auto spell = RE::TESForm::LookupByID<RE::SpellItem>(event->spell)) {
+                if (const auto actor = obj->As<RE::Actor>()) {
+                    std::lock_guard<std::mutex> lock(castingMutex);
+                    // If the spell is not marked as casting
+                    if (actor->IsPlayerRef() && std::ranges::find(casting, spell) == std::end(casting)) {
+                        // Mark this spell as casting
+                        casting.push_back(spell);
+                        // Start new async thread
+                        std::thread([actor, spell]() {
+                            // Wait until the spell isn't cast anymore
+                            while (actor->IsCasting(spell)) {
+                                std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                            }
+                            auto start = std::chrono::steady_clock::now();
+                            // Wait for one second. If during this wait the spell is cast again, reset the timer to avoid spamming events by spam-casting.
+                            while (std::chrono::duration<float>(std::chrono::steady_clock::now() - start).count() < 1.0f) {
+                                if (actor->IsCasting(spell)) {
+                                    start = std::chrono::steady_clock::now();
+                                }
+                            }
+                            // Mark spell as not casting
+                            std::lock_guard lock(castingMutex);
+                            std::erase(casting, spell);
                         }).detach();
+                        // Register Dynamic Conditions
+                        ConditionManager::RegisterDynamicCondition("PVESpellCast", "SpellFormID", [spell]() {
+                            return static_cast<int>(spell->GetFormID());
+                        });
+                        ConditionManager::RegisterDynamicCondition("PVESpellCast", "SpellKeywords", [spell]() {
+                            std::string s = "";
+                            for (auto mgef : spell->effects) {
+                                for (const auto keyword : mgef->baseEffect->GetKeywords()) {
+                                    if (keyword && !s.contains(keyword->GetFormEditorID())) {
+                                        s += keyword->GetFormEditorID();
+                                        s += "|";
+                                    }
+                                }
+                            }
+                            return s.empty() ? s : s.substr(0, s.size() - 1);
+                        });
+                        // Play Sound
+                        Utils::PlaySound("PVESpellCast");
                     }
                 }
             }
@@ -159,53 +322,101 @@ namespace PVE {
         return RE::BSEventNotifyControl::kContinue;
     }
 
+    RE::BSEventNotifyControl DefaultEventSink::ProcessEvent(const RE::LocationDiscovery::Event *event, RE::BSTEventSource<RE::LocationDiscovery::Event> *) {
+        if (event && event->mapMarkerData) {
+            std::string locName = "";
+            std::string worldspaceName = "";
+            if (event->mapMarkerData) locName = event->mapMarkerData->locationName.GetFullName();
+            if (event->worldspaceID) worldspaceName = event->worldspaceID;
+            ConditionManager::RegisterDynamicCondition("PVELocationDiscover", "LocationName", [locName] {
+                return locName;
+            });
+            ConditionManager::RegisterDynamicCondition("PVELocationDiscover", "WorldspaceName", [worldspaceName] {
+                return worldspaceName;
+            });
+            Utils::PlaySound("PVELocationDiscover");
+        }
+        return RE::BSEventNotifyControl::kContinue;
+    }
+
     RE::BSEventNotifyControl DynamicEventSink::ProcessEvent(const SKSE::CameraEvent *event, RE::BSTEventSource<SKSE::CameraEvent> *) {
         if (event && event->oldState && event->newState) {
-            const auto newState = event->newState->id;
-            const auto oldState = event->oldState->id;
-            if (newState == RE::CameraState::kVATS) {
-                if (RE::PlayerCharacter::GetSingleton()->IsInKillMove()) {
-                    Utils::PlaySound("PVEFinisherStart");
+            if (auto player = RE::PlayerCharacter::GetSingleton()) {
+                const auto newState = event->newState->id;
+                const auto oldState = event->oldState->id;
+                if (newState == RE::CameraState::kVATS) {
+                    if (RE::PlayerCharacter::GetSingleton()->IsInKillMove()) {
+                        ConditionManager::RegisterDynamicCondition("PVEFinisher", "FinisherState", [] {
+                            return 0;
+                        });
+                        Utils::PlaySound("PVEFinisher");
+                    }
+                } else if (oldState == RE::CameraState::kVATS) {
+                    ConditionManager::RegisterDynamicCondition("PVEFinisher", "FinisherState", [] {
+                        return 1;
+                    });
+                    Utils::PlaySound("PVEFinisher");
+                } else if (newState == RE::CameraState::kMount) {
+                    ConditionManager::RegisterDynamicCondition("PVEMount", "MountType", [] {
+                        return 0;
+                    });
+                    Utils::PlaySound("PVEMount");
+                } else if (oldState == RE::CameraState::kMount) {
+                    ConditionManager::RegisterDynamicCondition("PVEDismount", "MountType", [] {
+                        return 0;
+                    });
+                    Utils::PlaySound("PVEDismount");
+                } else if (newState == RE::CameraState::kBleedout) {
+                    Utils::PlaySound("PVEDeath");
+                } else if (newState == RE::CameraState::kDragon) {
+                    ConditionManager::RegisterDynamicCondition("PVEMount", "MountType", [] {
+                        return 1;
+                    });
+                    Utils::PlaySound("PVEMount");
+                } else if (oldState == RE::CameraState::kDragon) {
+                    ConditionManager::RegisterDynamicCondition("PVEDismount", "MountType", [] {
+                        return 1;
+                    });
+                    Utils::PlaySound("PVEDismount");
                 }
-            } else if (oldState == RE::CameraState::kVATS) {
-                Utils::PlaySound("PVEFinisherEnd");
-            } else if (newState == RE::CameraState::kFurniture) {
-                Utils::PlaySound("PVESit");
-            } else if (oldState == RE::CameraState::kFurniture) {
-                Utils::PlaySound("PVEGetUp");
-            } else if (newState == RE::CameraState::kMount) {
-                Utils::PlaySound("PVEMountHorse");
-            } else if (oldState == RE::CameraState::kMount) {
-                Utils::PlaySound("PVEDismountHorse");
-            } else if (newState == RE::CameraState::kBleedout) {
-                Utils::PlaySound("PVEDeath");
-            } else if (newState == RE::CameraState::kDragon) {
-                Utils::PlaySound("PVEMountDragon");
-            } else if (oldState == RE::CameraState::kDragon) {
-                Utils::PlaySound("PVEDismountDragon");
             }
         }
         return RE::BSEventNotifyControl::kContinue;
     }
 
     RE::BSEventNotifyControl DynamicEventSink::ProcessEvent(const RE::BGSActorCellEvent *event, RE::BSTEventSource<RE::BGSActorCellEvent> *) {
-        if (event->actor && event->actor.get()->IsPlayerRef() && !event->flags.any(RE::BGSActorCellEvent::CellFlag::kLeave)) {
-            auto actor = event->actor.get();
-            std::thread([actor] {
-                while (!actor->GetWorldspace()) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        if (event && event->actor && event->actor.get()->IsPlayerRef()) {
+            if (RE::TESForm *form = RE::TESForm::LookupByID(event->cellID)) {
+                if (RE::TESObjectCELL *cell = form->As<RE::TESObjectCELL>()) {
+                    if (!event->flags.any(RE::BGSActorCellEvent::CellFlag::kLeave)) {
+                        if (cell != currentCell) {
+                            RE::TESObjectCELL *oldCell = currentCell.has_value() ? currentCell.value() : nullptr;
+                            RE::TESObjectCELL *newCell = cell;
+                            currentCell = cell;
+                            std::thread([oldCell, newCell] {
+                                while (!Utils::CanPlaySound()) {
+                                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                                }
+                                ConditionManager::RegisterDynamicCondition("PVEChangeCell", "OldCellName", [oldCell] {
+                                    return oldCell ? oldCell->GetFormEditorID() : "";
+                                });
+                                ConditionManager::RegisterDynamicCondition("PVEChangeCell", "OldCellFormID", [oldCell] {
+                                    return oldCell ? static_cast<int>(oldCell->GetFormID()) : -1;
+                                });
+                                ConditionManager::RegisterDynamicCondition("PVEChangeCell", "NewCellName", [newCell] {
+                                    return newCell ? newCell->GetFormEditorID() : "";
+                                });
+                                ConditionManager::RegisterDynamicCondition("PVEChangeCell", "NewCellFormID", [newCell] {
+                                    return newCell ? static_cast<int>(newCell->GetFormID()) : -1;
+                                });
+                                Utils::PlaySound("PVEChangeCell");
+                            }).detach();
+                        }
+                    }
                 }
-                auto worldspace = actor->GetWorldspace();
-                if (currentWorldspace.has_value() && currentWorldspace.value() == worldspace) {
-                    return;
-                }
-                currentWorldspace.emplace(worldspace);
-                const std::string s = actor->GetWorldspace()->GetName();
-                if (s == "Whiterun" || s == "Solitude" || s == "Markarth" || s == "Windhelm" || s == "Riften") {
-                    Utils::PlaySound("PVELocationEnterCity", std::format("PVELocationEnterCity{}", s));
-                }
-            }).detach();
+            }
         }
         return RE::BSEventNotifyControl::kContinue;
     }
+
 }

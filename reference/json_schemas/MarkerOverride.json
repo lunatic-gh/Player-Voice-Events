@@ -1,0 +1,35 @@
+// DONT MODIFY THIS!!!
+// DONT MODIFY THIS!!!
+// DONT MODIFY THIS!!!
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PlayerVoiceEvents Marker-Override JSON Schema",
+  "description": "JSON-Schema for Marker-Override Files",
+  "type": "object",
+  "properties": {
+    "worldspace": {
+      "type": "string",
+      "description": "The worldspace of the marker.",
+      "default": "Skyrim"
+    },
+    "markerID": {
+      "type": "string",
+      "description": "The plugin and hexadecimal form id of the marker.",
+      "default": "Skyrim.esm|0x123456"
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "If false, this marker gets ignored by the mod.",
+      "default": true
+    },
+    "radius": {
+      "type": "number",
+      "description": "The radius of the marker that triggers an event.",
+      "default": 1000.0
+    }
+  },
+  "required": [
+    "worldspace",
+    "markerID"
+  ]
+}

@@ -1,6 +1,6 @@
 // This is a list of all conditions that can be used for all the events in the config.
 {
-  // "Global" events can be used on all events, since they refer to global game/player states
+  // "Global" conditions can be used on all events, since they refer to global game/player states
   "Global": [
     // Int
     "PlayerHealthPercentage",
@@ -12,12 +12,12 @@
     "PlayerEquippedWeaponTypeLeft",
     // Int
     "PlayerEquippedWeaponTypeRight",
+    // String,
+    "PlayerName",
     // String
-    "PlayerRace",
+    "PlayerRaceName",
     // Int
     "PlayerSex",
-    // String
-    "PlayerName",
     // Float
     "PlayerPosX",
     // Float
@@ -26,15 +26,124 @@
     "PlayerPosZ",
     // String
     "PlayerLocationName",
-    // String
-    // NOTE: This will be formatted as "keyword1|keyword2|...|..."
-    // You can use "PlayerLocationKeywords *= 'myKeyword' to check if the location contains 'myKeyword'"
+    // String (Formatted as "keyword1|keyword2|...|..." - Use the *= operator for single keywords)
     "PlayerLocationKeywords",
-    // String (This may be empty on lots of cells)
-    "PlayerCellName"
+    // Int (1 -> 100)
+    "RandomInt",
+    // Float (1.0 -> 100.0)
+    "RandomFloat",
+    // Bool (true, false)
+    "RandomBool"
   ],
-  // The following events are conditional - they only apply to the specific events
+  // "Conditional" conditions (lol) only apply to specific events
   "Conditional": {
-
+    "PVEAttackMelee": [
+      // Bool
+      "IsPowerAttack"
+    ],
+    "PVEAttackBow": [
+      // Bool
+      "IsFullDrawn"
+    ],
+    "PVEReceivedHit": [
+      // Bool
+      "IsAttackBlocked",
+      // Bool
+      "IsBashAttack",
+      // Bool
+      "IsPowerAttack",
+      // Bool
+      "IsSneakAttack",
+      // Bool
+      "IsHealingAttack"
+    ],
+    "PVESpellCast": [
+      // Int
+      "SpellFormID",
+      // String (Formatted as "keyword1|keyword2|...|..." - Use the *= operator for single keywords)
+      "SpellKeywords"
+    ],
+    "PVEUnsheatheWeapon": [
+      // Int
+      "WeaponFormID",
+      // Int
+      "WeaponType",
+      // String (Formatted as "keyword1|keyword2|...|..." - Use the *= operator for single keywords)
+      "WeaponKeywords"
+    ],
+    "PVESheatheWeapon": [
+      // Int
+      "WeaponFormID",
+      // Int
+      "WeaponType",
+      // String (Formatted as "keyword1|keyword2|...|..." - Use the *= operator for single keywords)
+      "WeaponKeywords"
+    ],
+    "PVEUnsheatheSpell": [
+      // Int
+      "SpellFormID",
+      // String (Formatted as "keyword1|keyword2|...|..." - Use the *= operator for single keywords)
+      "SpellKeywords"
+    ],
+    "PVESheatheSpell": [
+      // Int
+      "SpellFormID",
+      // String (Formatted as "keyword1|keyword2|...|..." - Use the *= operator for single keywords)
+      "SpellKeywords"
+    ],
+    "PVESleep": [
+      // Int (0 = Sleep-Start, 1 = Sleep-End)
+      "SleepState"
+    ],
+    "PVEPickupItem": [
+      // Int
+      "ItemFormID",
+      // Int
+      "ItemFormType",
+      // String (Formatted as "keyword1|keyword2|...|..." - Use the *= operator for single keywords)
+      "ItemKeywords",
+      // Int
+      "SourceContainerFormID"
+    ],
+    "PVEQuestStageCompleted": [
+      // Int
+      "QuestFormID",
+      // Int
+      "QuestStage"
+    ],
+    "PVEFinisher": [
+      // Int (0 = Finisher-Start, 1 = Finisher-End)
+      "FinisherState"
+    ],
+    "PVEMount": [
+      // Int (0 = Horse, 1 = Dragon)
+      "MountType"
+    ],
+    "PVEDismount": [
+      // Int (0 = Horse, 1 = Dragon)
+      "MountType"
+    ],
+    "PVEChangeCell": [
+      // String (Might be empty)
+      "OldCellName",
+      // String (Might be empty)
+      "NewCellName",
+      // Int
+      "OldCellFormID",
+      // Int
+      "NewCellFormID"
+    ],
+    "PVEEnterMarker": [
+      // String (Non-Empty)
+      "MarkerName",
+      // Int
+      "MarkerFormID"
+    ],
+    "PVELocationDiscover": [
+      // String
+      "LocationName",
+      // String
+      "WorldspaceName"
+    ]
   }
 }

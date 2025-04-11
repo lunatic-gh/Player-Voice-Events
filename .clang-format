@@ -16,13 +16,16 @@
 #   when installing
 #
 UseTab: Never
-TabWidth: '4'
-IndentWidth: '4'
+TabWidth: 4
+IndentWidth: 4
 BasedOnStyle: Google
 AccessModifierOffset: -4
-ColumnLimit: 170
+ColumnLimit: 200
 BinPackArguments: false
 NamespaceIndentation: All
 IndentPPDirectives: BeforeHash
 FixNamespaceComments: false
-AllowShortFunctionsOnASingleLine: "Empty"
+AllowShortFunctionsOnASingleLine: "None"
+AllowAllArgumentsOnNextLine: false
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: None

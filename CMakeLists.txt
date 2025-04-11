@@ -13,7 +13,9 @@ set(headers
         src/SoundEvent.h
         src/Logger.h
         src/LoopManager.h
-        src/ConditionParser.h
+        src/ConditionManager.h
+        src/ConfigParser.h
+        src/Exports.h
 )
 
 set(sources
@@ -28,9 +30,12 @@ set(sources
 )
 
 find_package(CommonLibSSE CONFIG REQUIRED)
+find_package(yaml-cpp CONFIG REQUIRED)
 add_commonlibsse_plugin(${PROJECT_NAME} SOURCES ${headers} ${sources})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_precompile_headers(${PROJECT_NAME} PRIVATE PCH.h)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE yaml-cpp)
 
 set(DLL_FOLDER "${CMAKE_SOURCE_DIR}/SKSE/Plugins")
 

@@ -5,8 +5,7 @@ namespace PVE {
     public:
         explicit SoundEvent() = default;
 
-        explicit SoundEvent(int chance, float cooldown, bool canBeOverridden, bool forceOverrideOthers, float delay, float volume,
-                            const std::vector<std::pair<std::string, std::vector<std::string>>> &files, const bool isLipped);
+        explicit SoundEvent(int chance, float cooldown, bool canBeOverridden, bool forceOverrideOthers, float delay, float volume, const std::vector<std::pair<std::string, std::vector<std::string>>> &files, const bool isLipped);
 
         bool Play(const std::string &eventName);
 

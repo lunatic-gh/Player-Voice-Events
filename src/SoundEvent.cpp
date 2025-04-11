@@ -1,13 +1,12 @@
 // ReSharper disable CppMemberFunctionMayBeStatic
 #include "SoundEvent.h"
 
-#include "ConditionParser.h"
+#include "ConditionManager.h"
 #include "Utils.h"
 
 namespace PVE {
 
-    SoundEvent::SoundEvent(const int chance, const float cooldown, const bool canBeOverridden, const bool forceOverrideOthers, const float delay, const float volume,
-                           const std::vector<std::pair<std::string, std::vector<std::string>>>& files, const bool isLipped) {
+    SoundEvent::SoundEvent(const int chance, const float cooldown, const bool canBeOverridden, const bool forceOverrideOthers, const float delay, const float volume, const std::vector<std::pair<std::string, std::vector<std::string>>>& files, const bool isLipped) {
         this->chance = chance;
         this->cooldown = cooldown;
         this->canBeOverridden = canBeOverridden;
@@ -20,12 +19,12 @@ namespace PVE {
 
     bool SoundEvent::Play(const std::string& eventName) {
         if (!currentSound.has_value() || !currentSound->IsPlaying() || (currentSound->CanBeOverridden() || forceOverrideOthers)) {
-            if (eventCooldowns[eventName] == 0.0f) {
+            if (eventCooldownMap[eventName] == 0.0f) {
                 if (Utils::GenerateRandomInt(0, 99) < chance) {
                     for (auto [condition, files] : this->audios) {
-                        if (ConditionParser::EvaluateCondition(eventName, condition)) {
+                        if (ConditionManager::EvaluateCondition(eventName, condition)) {
                             // we can safely remove the dynamic conditions for this event, since they have been evaluated to true already
-                            ConditionParser::ResetDynamicConditions(eventName);
+                            ConditionManager::ResetDynamicConditions(eventName);
                             if (currentSound.has_value()) {
                                 currentSound->Stop();
                             }
@@ -36,15 +35,16 @@ namespace PVE {
                             handle.SetVolume(this->volume);
                             handle.SetObjectToFollow(RE::PlayerCharacter::GetSingleton()->GetCurrent3D());
                             handle.Play();
-                            Utils::Log(std::format("Played sound '{}'", file));
+                            Utils::Log("Debug", std::format("Played sound '{}'", file));
                             currentSound.emplace(*this);
-                            eventCooldowns[eventName] = this->cooldown;
+                            eventCooldownMap[eventName] = this->cooldown;
                             return true;
                         }
                     }
                 }
             }
         }
+        ConditionManager::ResetDynamicConditions(eventName);
         return false;
     }
 

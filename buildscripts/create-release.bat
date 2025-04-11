@@ -13,7 +13,7 @@ REM Remove the existing zip file if it exists
 if exist %ZIP_FILE% del /f %ZIP_FILE%
 
 REM Create the zip file and include the specified files and directories
-powershell -Command "Compress-Archive -Path .\Scripts\, .\Seq\, .\SKSE\, .\LICENSE, .\PVE-Events.jsonc, .\PVE-Conditions.jsonc, .\PlayerVoiceEvents.esp, .\Sound\ -DestinationPath %ZIP_FILE%"
+powershell -Command "Compress-Archive -Path .\Scripts\, .\Seq\, .\SKSE\, .\LICENSE, .\PVE-Conditions.jsonc, .\PlayerVoiceEvents.esp, .\Sound\, .\reference\ -DestinationPath %ZIP_FILE%"
 
 echo Created Release at: "%ZIP_FILE%"
 

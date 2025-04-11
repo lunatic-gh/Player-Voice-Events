@@ -6,7 +6,7 @@ namespace PVE {
         static bool Funcs(RE::BSScript::IVirtualMachine *vm);
 
     private:
-        static void PlaySound(RE::StaticFunctionTag *, std::string category, std::string subCategory);
+        static void PlaySound(RE::StaticFunctionTag *, std::string eventName);
 
         static void StopSound(RE::StaticFunctionTag *);
 

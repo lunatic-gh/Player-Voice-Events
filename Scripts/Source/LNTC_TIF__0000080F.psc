@@ -8,7 +8,9 @@ Actor akSpeaker = akSpeakerRef as Actor
 ;BEGIN CODE
 Shout sht = akSpeaker.GetEquippedShout()
 If sht
-    LNTC_PVESKSEFunctions.PlaySound("PVEShout" + LNTC_PVESKSEFunctions.Replace(sht.GetName(), " ", "") + "_0")
+    LNTC_PVESKSEFunctions.RegisterDynamicIntCondition("PVEShout", "ShoutFormID", sht.GetFormID())
+    LNTC_PVESKSEFunctions.RegisterDynamicIntCondition("PVEShout", "ShoutNthWord", 0)
+    LNTC_PVESKSEFunctions.PlaySound("PVEShout")
 EndIf
 ;END CODE
 EndFunction

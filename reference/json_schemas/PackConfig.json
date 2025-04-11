@@ -14,6 +14,7 @@
         "PVEAttackMelee": {
           "type": "object",
           "title": "Event",
+          "description": "Played when swinging a melee weapon.",
           "properties": {
             "chance": {
               "type": "integer",
@@ -74,71 +75,97 @@
           ],
         },
         "PVEAttackBow": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when shooting a bow."
         },
         "PVEUnsheatheWeapon": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when pulling out a weapon. Note that this also gets called when hotkeying while already unsheathed."
         },
         "PVEUnsheatheSpell": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when pulling out a spell. Note that this also gets called when hotkeying while already unsheathed."
         },
         "PVESheatheWeapon": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when putting away a weapon."
         },
         "PVESheatheSpell": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when putting away a spell."
         },
         "PVEBash": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when bashing with both a shield or a weapon. Does not play when stamina is out."
         },
         "PVEDeath": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when dying."
         },
         "PVEReceivedHit": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when receiving a hit."
         },
         "PVEFinisher": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when performing a finisher."
         },
         "PVECastSpell": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when casting a spell. Only re-plays after not casting that spell for 1 second."
         },
         "PVESit": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when sitting down on a piece of furniture."
         },
         "PVEGetUp": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when getting up from a piece of furniture."
         },
         "PVESleep": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when starting/ending sleep."
         },
         "PVEJump": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when jumping."
         },
         "PVEMount": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when mounting a horse or dragon."
         },
         "PVEDismount": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when dismounting a horse or dragon."
         },
         "PVESprintIdle": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played periodically while sprinting."
         },
         "PVEPickupItem": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when receiving an item."
         },
         "PVEShout": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when shouting a word."
         },
         "PVEQuestStageCompleted": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when completing a quest stage."
         },
         "PVEChangeCell": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when Changing to another cell."
         },
         "PVEEnterMarker": {
-          "$ref": "#/properties/sounds/properties/PVEAttackMelee"
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when entering the discover-radius of a location"
         },
+        "PVELocationDiscover": {
+          "$ref": "#/properties/sounds/properties/PVEAttackMelee",
+          "description": "Played when discovering a location for the first time (when receiving the text-popup on screen)"
+        }
       },
       "additionalProperties": true
     }
